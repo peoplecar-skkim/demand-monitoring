@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>카셰어링 이용 분석 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<style>
+  :root {
+    --bg: #F3F5F7;
+    --card: #FFFFFF;
+    --ink: #1F2933;
+    --sub: #6B7684;
+    --line: #E3E7EB;
+    --up: #B4525A;
+    --down: #2D6E7E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 36px 24px 60px; }
+
+  header { margin-bottom: 24px; }
+  header .eyebrow {
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--sub); font-weight: 600; margin-bottom: 6px;
+  }
+  header h1 {
+    font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700;
+    margin: 0 0 6px; letter-spacing: -0.01em;
+  }
+  header p { margin: 0; color: var(--sub); font-size: 14px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+
+  .upload-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .upload-btn {
+    background: var(--ink); color: #fff; border: none;
+    padding: 10px 18px; border-radius: 9px; font-weight: 600;
+    font-size: 13px; cursor: pointer; transition: opacity .15s; white-space: nowrap;
+  }
+  .upload-btn:hover { opacity: 0.85; }
+  .upload-btn.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  #fileInput { display: none; }
+  .upload-status { font-size: 13px; color: var(--sub); }
+  .upload-status.ok { color: #2D6E7E; font-weight: 600; }
+  .upload-status.err { color: var(--up); font-weight: 600; }
+
+  .filter-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filter-group .label { font-size: 12px; color: var(--sub); font-weight: 600; margin-right: 2px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 100px; border: 1px solid var(--line);
+    font-size: 12.5px; cursor: pointer; user-select: none; background: #fff;
+    transition: all .12s; color: var(--sub);
+  }
+  .chip input { display: none; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .chip.active { border-color: transparent; background: var(--ink); color: #fff; }
+  .date-input {
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    font-size: 13px; font-family: inherit; color: var(--ink);
+  }
+  .toggle-group { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .toggle-group button {
+    border: none; background: #fff; padding: 7px 14px; font-size: 12.5px;
+    cursor: pointer; color: var(--sub); font-family: inherit; font-weight: 500;
+  }
+  .toggle-group button.active { background: var(--ink); color: #fff; font-weight: 600; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .summary-item { text-align: left; }
+  .summary-item .s-label { font-size: 11.5px; color: var(--sub); font-weight: 600; margin-bottom: 6px; }
+  .summary-item .s-value { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; }
+  .summary-item .s-sub { font-size: 11.5px; color: var(--sub); margin-top: 3px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  .tab-btn {
+    border: none; background: none; padding: 10px 16px; font-size: 13.5px;
+    font-weight: 600; color: var(--sub); cursor: pointer; font-family: inherit;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .chart-wrap { position: relative; height: 400px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--sub); font-weight: 600; font-size: 11.5px; }
+  tbody tr:hover { background: #FAFBFC; }
+  .table-scroll { max-height: 340px; overflow-y: auto; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--sub); }
+  .empty-state svg { margin-bottom: 14px; opacity: 0.5; }
+  .empty-state .title { font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 900px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .filter-row { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">투루카 · 카셰어링 이용 분석</div>
+    <h1>이용 데이터 대시보드</h1>
+    <p>구간 · 시간대 · 회원등급 · 지역별 이용 추이를 연도별로 비교합니다</p>
+  </header>
+
+  <div class="card">
+    <div class="upload-row">
+      <span class="upload-status" id="uploadStatus">데이터 불러오는 중...</span>
+      <button class="upload-btn secondary" onclick="document.getElementById('fileInput').click()">직접 업로드</button>
+      <input type="file" id="fileInput" accept=".db,.sqlite,.sqlite3">
+    </div>
+  </div>
+
+  <div id="emptyState" class="card empty-state">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 15V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V15" stroke-linecap="round"/>
+      <path d="M17 8L12 3L7 8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 3V15" stroke-linecap="round"/>
+    </svg>
+    <div class="title">아직 데이터가 없어요</div>
+    <div>자동으로 불러오는 중이거나, 위에서 dashboard_data.db 파일을 직접 업로드해주세요</div>
+  </div>
+
+  <div id="dashboardBody" class="hidden">
+
+    <div class="card">
+      <div class="filter-row">
+        <div class="filter-group" id="yearFilterGroup">
+          <span class="label">연도</span>
+        </div>
+        <div class="filter-group">
+          <span class="label">기간</span>
+          <input type="date" class="date-input" id="dateFrom">
+          <span style="color:var(--sub)">~</span>
+          <input type="date" class="date-input" id="dateTo">
+        </div>
+        <div class="filter-group">
+          <span class="label">보기</span>
+          <div class="toggle-group">
+            <button id="gran-week" class="active" onclick="setGranularity('week')">주별</button>
+            <button id="gran-month" onclick="setGranularity('month')">월별</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="seg" onclick="switchTab('seg')">이용시간 구간</button>
+      <button class="tab-btn" data-tab="time" onclick="switchTab('time')">출발 시간대</button>
+      <button class="tab-btn" data-tab="tier" onclick="switchTab('tier')">회원등급</button>
+      <button class="tab-btn" data-tab="region" onclick="switchTab('region')">지역</button>
+      <button class="tab-btn" data-tab="avg" onclick="switchTab('avg')">평균 이용시간</button>
+    </div>
+
+    <div class="card tab-panel active" data-panel="seg">
+      <div class="filter-row" style="margin-bottom:16px;"><div class="filter-group" id="catFilter-seg"></div></div>
+      <div class="chart-wrap"><canvas id="chart-seg"></canvas></div>
+    </div>
+
+    <div class="card tab-panel" data-panel="time">
+      <div class="filter-row" style="margin-bottom:16px;"><div class="filter-group" id="catFilter-time"></div></div>
+      <div class="chart-wrap"><canvas id="chart-time"></canvas></div>
+    </div>
+
+    <div class="card tab-panel" data-panel="tier">
+      <div class="filter-row" style="margin-bottom:16px;"><div class="filter-group" id="catFilter-tier"></div></div>
+      <div class="chart-wrap"><canvas id="chart-tier"></canvas></div>
+    </div>
+
+    <div class="card tab-panel" data-panel="region">
+      <div class="filter-row" style="margin-bottom:16px;"><div class="filter-group" id="catFilter-region"></div></div>
+      <div class="chart-wrap"><canvas id="chart-region"></canvas></div>
+    </div>
+
+    <div class="card tab-panel" data-panel="avg">
+      <div class="chart-wrap"><canvas id="chart-avg"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="table-scroll">
+        <table id="summaryTable">
+          <thead><tr><th>구분</th><th>항목</th><th>기간</th><th>건수</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// ====== 설정: dashboard_data.db 위치 ======
+// index.html과 dashboard_data.db를 같은 GitHub 저장소(같은 폴더)에 두면
+// 아래처럼 상대경로만으로 자동 로딩됩니다. (별도 URL 수정 불필요)
+const DB_URL = "dashboard_data.db";
+// ===================================================================
+
+const PALETTE = ['#2D6E7E', '#E2A33D', '#B4525A', '#6B8F71', '#8C6EA6', '#C97B4A', '#4A7FA6', '#A65C7E', '#7A9E4C', '#A68A2D'];
+
+const SEG_META = { '4h': '4시간 이하', '24h': '4~24시간', 'over': '24시간 초과' };
+const SEG_ORDER = ['4h', '24h', 'over'];
+const TIME_META = { t0: '00~04시', t1: '04~08시', t2: '08~12시', t3: '12~16시', t4: '16~20시', t5: '20~24시' };
+const TIME_ORDER = ['t0', 't1', 't2', 't3', 't4', 't5'];
+
+let SQL = null;
+const sqlReadyPromise = initSqlJs({
+  locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}`
+}).then(sql => { SQL = sql; });
+
+// 사전 집계된 원본 데이터 (필터 전, 주별/월별 각각)
+let AGG = {
+  seg: { week: [], month: [] },
+  time: { week: [], month: [] },
+  tier: { week: [], month: [] },
+  region: { week: [], month: [] },
+  avg: { week: [], month: [] },
+};
+
+let segDefs = [];
+let timeDefs = [];
+let tierDefs = [];
+let regionDefs = [];
+let allYears = [];
+let activeYearSet = new Set();
+let granularity = 'week';
+const charts = {};
+
+window.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('fileInput').addEventListener('change', handleFileInput);
+  try {
+    setStatus('GitHub에서 데이터 불러오는 중...', '');
+    const res = await fetch(DB_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const buf = await res.arrayBuffer();
+    await loadDbBuffer(buf, 'dashboard_data.db (자동)');
+  } catch (err) {
+    setStatus('자동 불러오기 실패 (' + err.message + '). "직접 업로드" 버튼으로 파일을 선택해주세요.', 'err');
+  }
+});
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('uploadStatus');
+  el.textContent = msg;
+  el.className = 'upload-status' + (cls ? ' ' + cls : '');
+}
+
+async function handleFileInput(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus('DB 여는 중...', '');
+  try {
+    const buf = await file.arrayBuffer();
+    await loadDbBuffer(buf, file.name);
+  } catch (err) {
+    setStatus('DB 읽기 실패: ' + err.message, 'err');
+  }
+}
+
+function tableToObjects(db, tableName) {
+  const check = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`);
+  if (check.length === 0) return [];
+  const res = db.exec(`SELECT * FROM ${tableName}`);
+  if (res.length === 0) return [];
+  const cols = res[0].columns;
+  return res[0].values.map(row => {
+    const obj = {};
+    cols.forEach((c, i) => { obj[c] = row[i]; });
+    return obj;
+  });
+}
+
+async function loadDbBuffer(buf, label) {
+  await sqlReadyPromise;
+  const db = new SQL.Database(new Uint8Array(buf));
+
+  AGG.seg.week = tableToObjects(db, 'agg_seg_week');
+  AGG.seg.month = tableToObjects(db, 'agg_seg_month');
+  AGG.time.week = tableToObjects(db, 'agg_time_week');
+  AGG.time.month = tableToObjects(db, 'agg_time_month');
+  AGG.tier.week = tableToObjects(db, 'agg_tier_week');
+  AGG.tier.month = tableToObjects(db, 'agg_tier_month');
+  AGG.region.week = tableToObjects(db, 'agg_region_week');
+  AGG.region.month = tableToObjects(db, 'agg_region_month');
+  AGG.avg.week = tableToObjects(db, 'agg_avg_week');
+  AGG.avg.month = tableToObjects(db, 'agg_avg_month');
+
+  db.close();
+
+  if (AGG.seg.week.length === 0 && AGG.seg.month.length === 0) {
+    setStatus('집계 테이블(agg_seg_week 등)을 찾지 못했어요. dashboard_data.db가 최신 형식으로 만들어졌는지 확인해주세요.', 'err');
+    return;
+  }
+
+  const totalRows =
+    AGG.seg.week.reduce((s, r) => s + r['건수'], 0) +
+    AGG.tier.week.reduce((s, r) => s + r['건수'], 0);
+  setStatus(`${label} — 집계 데이터 로드 완료`, 'ok');
+
+  buildDefs();
+  buildYearFilter();
+  buildDateRangeDefaults();
+  buildCategoryChips();
+
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('dashboardBody').classList.remove('hidden');
+
+  renderAll();
+}
+
+// ---------- ISO 주차 <-> 대표 날짜 ----------
+function isoWeekToDate(year, week) {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = (jan4.getUTCDay() + 6) % 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day);
+  const target = new Date(week1Monday);
+  target.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
+  return target;
+}
+function monthToDate(year, month) {
+  return new Date(Date.UTC(year, month - 1, 1));
+}
+
+// ---------- 카테고리 정의 구성 ----------
+function buildDefs() {
+  segDefs = SEG_ORDER.map((k, i) => ({ key: k, label: SEG_META[k], color: PALETTE[i] }));
+  timeDefs = TIME_ORDER.map((k, i) => ({ key: k, label: TIME_META[k], color: PALETTE[i] }));
+
+  function topCategories(rows, field) {
+    const counts = {};
+    for (const r of rows) {
+      const val = r[field];
+      if (val === null || val === undefined) continue;
+      counts[val] = (counts[val] || 0) + r['건수'];
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k], i) => ({ key: k, label: k, color: PALETTE[i % PALETTE.length] }));
+  }
+
+  const tierField = AGG.tier.week.length ? Object.keys(AGG.tier.week[0]).find(k => !['연도', '주차', '건수'].includes(k)) : null;
+  const regionField = AGG.region.week.length ? Object.keys(AGG.region.week[0]).find(k => !['연도', '주차', '건수'].includes(k)) : null;
+
+  tierDefs = tierField ? topCategories(AGG.tier.week, tierField) : [];
+  regionDefs = regionField ? topCategories(AGG.region.week, regionField) : [];
+
+  window._tierField = tierField;
+  window._regionField = regionField;
+
+  document.querySelector('[data-tab="tier"]').classList.toggle('hidden', tierDefs.length === 0);
+  document.querySelector('[data-tab="region"]').classList.toggle('hidden', regionDefs.length === 0);
+}
+
+function buildYearFilter() {
+  const yearSet = new Set();
+  [...AGG.seg.week, ...AGG.seg.month].forEach(r => yearSet.add(r['연도']));
+  allYears = Array.from(yearSet).sort((a, b) => a - b);
+  activeYearSet = new Set(allYears);
+
+  const group = document.getElementById('yearFilterGroup');
+  group.querySelectorAll('.chip').forEach(el => el.remove());
+
+  allYears.forEach(y => {
+    const chip = document.createElement('label');
+    chip.className = 'chip active';
+    chip.innerHTML = `<input type="checkbox" checked>${y}년`;
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      chip.classList.toggle('active');
+      chip.querySelector('input').checked = chip.classList.contains('active');
+      if (chip.classList.contains('active')) activeYearSet.add(y);
+      else activeYearSet.delete(y);
+      renderAll();
+    });
+    group.appendChild(chip);
+  });
+}
+
+function buildDateRangeDefaults() {
+  const dates = AGG.seg.week.map(r => isoWeekToDate(r['연도'], r['주차']));
+  if (dates.length === 0) return;
+  const minD = new Date(Math.min(...dates));
+  const maxD = new Date(Math.max(...dates));
+  const toInput = (d) => d.toISOString().slice(0, 10);
+  const fromEl = document.getElementById('dateFrom');
+  const toEl = document.getElementById('dateTo');
+  fromEl.value = toInput(minD);
+  toEl.value = toInput(maxD);
+  fromEl.onchange = renderAll;
+  toEl.onchange = renderAll;
+}
+
+function buildCategoryChips() {
+  buildChipGroup('catFilter-seg', segDefs, segDefs.map(d => d.key));
+  buildChipGroup('catFilter-time', timeDefs, timeDefs.map(d => d.key));
+  buildChipGroup('catFilter-tier', tierDefs, tierDefs.slice(0, 8).map(d => d.key));
+  buildChipGroup('catFilter-region', regionDefs, regionDefs.slice(0, 5).map(d => d.key));
+}
+
+function buildChipGroup(containerId, defs, defaultActiveKeys) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const activeSet = new Set(defaultActiveKeys);
+
+  defs.forEach(def => {
+    const chip = document.createElement('label');
+    chip.className = 'chip' + (activeSet.has(def.key) ? ' active' : '');
+    chip.dataset.key = def.key;
+    chip.innerHTML = `<input type="checkbox" ${activeSet.has(def.key) ? 'checked' : ''}><span class="dot" style="background:${def.color}"></span>${def.label}`;
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      chip.classList.toggle('active');
+      chip.querySelector('input').checked = chip.classList.contains('active');
+      renderAll();
+    });
+    container.appendChild(chip);
+  });
+}
+
+function activeDefKeys(containerId) {
+  const container = document.getElementById(containerId);
+  return Array.from(container.querySelectorAll('.chip.active')).map(chip => chip.dataset.key);
+}
+
+// ---------- 탭 ----------
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+}
+
+function setGranularity(g) {
+  granularity = g;
+  document.getElementById('gran-week').classList.toggle('active', g === 'week');
+  document.getElementById('gran-month').classList.toggle('active', g === 'month');
+  renderAll();
+}
+
+// ---------- 날짜 범위 ----------
+function getDateRange() {
+  const fromEl = document.getElementById('dateFrom').value;
+  const toEl = document.getElementById('dateTo').value;
+  const fromMs = fromEl ? new Date(fromEl + 'T00:00:00Z').getTime() : -Infinity;
+  const toMs = toEl ? new Date(toEl + 'T23:59:59Z').getTime() : Infinity;
+  return { fromMs, toMs };
+}
+
+function rowInRange(row, xField, fromMs, toMs) {
+  const repDate = xField === '주차' ? isoWeekToDate(row['연도'], row['주차']) : monthToDate(row['연도'], row['월']);
+  const t = repDate.getTime();
+  return t >= fromMs && t <= toMs;
+}
+
+// ---------- 연도별 선 스타일 ----------
+function dashForYearRank(rankFromLatest) {
+  const patterns = [[], [6, 4], [2, 2], [6, 4, 2, 4]];
+  return patterns[Math.min(rankFromLatest, patterns.length - 1)];
+}
+
+// ---------- 공통 시계열 차트 렌더 ----------
+function renderCategoryChart(canvasId, defs, activeKeys, rows, catField, yLabel) {
+  const xField = granularity === 'week' ? '주차' : '월';
+  const { fromMs, toMs } = getDateRange();
+  const years = Array.from(activeYearSet).sort((a, b) => a - b);
+
+  const filtered = rows.filter(r =>
+    activeYearSet.has(r['연도']) && rowInRange(r, xField, fromMs, toMs)
+  );
+
+  const xvalsSet = new Set(filtered.map(r => r[xField]));
+  const xvals = Array.from(xvalsSet).sort((a, b) => a - b);
+
+  const activeDefs = defs.filter(d => activeKeys.includes(d.key));
+
+  const datasets = [];
+  activeDefs.forEach(def => {
+    years.forEach((year, idxInYears) => {
+      const rankFromLatest = years.length - 1 - idxInYears;
+      const data = xvals.map(x => {
+        const match = filtered.find(r => r[catField] === def.key && r['연도'] === year && r[xField] === x);
+        return match ? match['건수'] : 0;
+      });
+      datasets.push({
+        label: `${def.label} (${year}년)`,
+        data,
+        borderColor: def.color,
+        backgroundColor: def.color,
+        borderDash: dashForYearRank(rankFromLatest),
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+        spanGaps: true,
+      });
+    });
+  });
+
+  drawChart(canvasId, xvals, datasets, yLabel);
+  return filtered;
+}
+
+function drawChart(canvasId, xvals, datasets, yLabel) {
+  const seenMonth = new Set();
+  const tickLabels = granularity === 'week'
+    ? xvals.map((w, i) => {
+        // 주차 리스트가 여러 연도를 섞어서 가질 수 있으므로 라벨은 그냥 주차 자체로 표기
+        return `${w}`;
+      })
+    : xvals.map(m => `${m}월`);
+
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: xvals, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10.5 } } },
+        tooltip: {
+          callbacks: {
+            title: (items) => granularity === 'week' ? `${items[0].label}주차` : `${items[0].label}월`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { callback: (val, idx) => tickLabels[idx], autoSkip: true, maxRotation: 0 },
+          grid: { display: false },
+        },
+        y: { beginAtZero: true, grid: { color: '#EEF1F3' }, title: { display: true, text: yLabel, font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+// ---------- 평균 이용시간 차트 (카테고리 없음) ----------
+function renderAvgChart() {
+  const xField = granularity === 'week' ? '주차' : '월';
+  const rows = granularity === 'week' ? AGG.avg.week : AGG.avg.month;
+  const { fromMs, toMs } = getDateRange();
+  const years = Array.from(activeYearSet).sort((a, b) => a - b);
+
+  const filtered = rows.filter(r => activeYearSet.has(r['연도']) && rowInRange(r, xField, fromMs, toMs));
+  const xvals = Array.from(new Set(filtered.map(r => r[xField]))).sort((a, b) => a - b);
+
+  const datasets = years.map((year, idxInYears) => {
+    const rankFromLatest = years.length - 1 - idxInYears;
+    const data = xvals.map(x => {
+      const match = filtered.find(r => r['연도'] === year && r[xField] === x);
+      return match ? +match['평균시간'].toFixed(2) : null;
+    });
+    return {
+      label: `평균 이용시간 (${year}년)`,
+      data,
+      borderColor: PALETTE[0],
+      backgroundColor: PALETTE[0],
+      borderDash: dashForYearRank(rankFromLatest),
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true,
+    };
+  });
+
+  drawChart('chart-avg', xvals, datasets, '시간');
+}
+
+// ---------- 메인 렌더 ----------
+function renderAll() {
+  const segFiltered = renderCategoryChart('chart-seg', segDefs, activeDefKeys('catFilter-seg'), granularity === 'week' ? AGG.seg.week : AGG.seg.month, '구간', '건수');
+  const timeFiltered = renderCategoryChart('chart-time', timeDefs, activeDefKeys('catFilter-time'), granularity === 'week' ? AGG.time.week : AGG.time.month, '시간대', '건수');
+
+  let tierFiltered = [];
+  if (tierDefs.length) {
+    tierFiltered = renderCategoryChart('chart-tier', tierDefs, activeDefKeys('catFilter-tier'), granularity === 'week' ? AGG.tier.week : AGG.tier.month, window._tierField, '건수');
+  }
+  if (regionDefs.length) {
+    renderCategoryChart('chart-region', regionDefs, activeDefKeys('catFilter-region'), granularity === 'week' ? AGG.region.week : AGG.region.month, window._regionField, '건수');
+  }
+
+  renderAvgChart();
+  renderSummary(segFiltered, timeFiltered, tierFiltered);
+  renderTable(segFiltered);
+}
+
+function renderSummary(segFiltered, timeFiltered, tierFiltered) {
+  const xField = granularity === 'week' ? '주차' : '월';
+  const { fromMs, toMs } = getDateRange();
+
+  const avgRows = (granularity === 'week' ? AGG.avg.week : AGG.avg.month)
+    .filter(r => activeYearSet.has(r['연도']) && rowInRange(r, xField, fromMs, toMs));
+
+  const totalCount = avgRows.reduce((s, r) => s + r['건수'], 0);
+  const weightedHours = avgRows.reduce((s, r) => s + r['평균시간'] * r['건수'], 0);
+  const avgHours = totalCount ? weightedHours / totalCount : 0;
+
+  const sumBy = (rows, field) => {
+    const c = {};
+    for (const r of rows) { c[r[field]] = (c[r[field]] || 0) + r['건수']; }
+    const sorted = Object.entries(c).sort((a, b) => b[1] - a[1]);
+    return sorted.length ? sorted[0][0] : '-';
+  };
+
+  const topSeg = sumBy(segFiltered, '구간');
+  const topTime = sumBy(timeFiltered, '시간대');
+  const topTier = window._tierField && tierFiltered.length ? sumBy(tierFiltered, window._tierField) : '-';
+
+  const grid = document.getElementById('summaryGrid');
+  grid.innerHTML = `
+    <div class="summary-item"><div class="s-label">전체 건수</div><div class="s-value">${totalCount.toLocaleString()}</div><div class="s-sub">선택된 기간·연도 기준</div></div>
+    <div class="summary-item"><div class="s-label">평균 이용시간</div><div class="s-value">${avgHours.toFixed(1)}시간</div><div class="s-sub">건당 평균</div></div>
+    <div class="summary-item"><div class="s-label">최다 이용 구간</div><div class="s-value" style="font-size:16px;">${SEG_META[topSeg] || topSeg}</div><div class="s-sub">건수 기준</div></div>
+    <div class="summary-item"><div class="s-label">최다 출발 시간대</div><div class="s-value" style="font-size:16px;">${TIME_META[topTime] || topTime}</div><div class="s-sub">건수 기준</div></div>
+    <div class="summary-item"><div class="s-label">최다 회원등급</div><div class="s-value" style="font-size:16px;">${topTier}</div><div class="s-sub">건수 기준</div></div>
+  `;
+}
+
+function renderTable(segFiltered) {
+  const tbody = document.querySelector('#summaryTable tbody');
+  tbody.innerHTML = '';
+  const unit = granularity === 'week' ? '주차' : '월';
+  const xField = granularity === 'week' ? '주차' : '월';
+
+  const sorted = [...segFiltered].sort((a, b) => {
+    if (a['연도'] !== b['연도']) return a['연도'] - b['연도'];
+    if (a[xField] !== b[xField]) return a[xField] - b[xField];
+    return SEG_ORDER.indexOf(a['구간']) - SEG_ORDER.indexOf(b['구간']);
+  });
+
+  sorted.slice(0, 500).forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${SEG_META[r['구간']] || r['구간']}</td><td>${r['연도']}년</td><td>${r[xField]}${unit}</td><td>${r['건수'].toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+</script>
+</body>
+</html>
